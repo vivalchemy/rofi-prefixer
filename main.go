@@ -46,51 +46,87 @@ func (c *Cmd) ExecuteTerminalCommand() (string, error) {
 	return string(output), nil
 }
 
-type Cmds []Cmd
+type Cmds struct {
+	commands map[string]*Cmd
+}
+
+func NewCmds(cmdList []Cmd) *Cmds {
+	cmds := &Cmds{
+		commands: make(map[string]*Cmd),
+	}
+	for i := range cmdList {
+		cmds.commands[cmdList[i].Prefix] = &cmdList[i]
+	}
+	return cmds
+}
 
 func (commands *Cmds) ExecuteTerminalCommand(prefix string) {
-	for _, cmd := range *commands {
-		if cmd.Prefix == prefix {
-			output, err := cmd.ExecuteTerminalCommand()
-			if err != nil {
-				fmt.Printf("Error executing command '%s': %v\n", cmd.Name, err)
-				return
-			}
-			fmt.Println("Output:", output)
-			return
-		}
+	cmd, exists := commands.commands[prefix]
+	if !exists {
+		fmt.Println("No matching command for prefix:", prefix)
+		return
 	}
-	fmt.Println("No matching command for prefix:", prefix)
+
+	output, err := cmd.ExecuteTerminalCommand()
+	if err != nil {
+		fmt.Printf("Error executing command '%s': %v\n", cmd.Name, err)
+		return
+	}
+	fmt.Println("Output:", output)
 }
 
 func main() {
-	ROFI_CMDS := Cmds{
-		Cmd{
-			Name:      `Calculator`,
-			Command:   `rofi -show calc`,
-			Prefix:    `=`,
-			Workspace: 0,
-		},
-		Cmd{
-			Name:      `window`,
-			Command:   `rofi -show window`,
-			Prefix:    `w`,
-			Workspace: 0,
-		},
-		Cmd{
+	ROFI_CMDS := NewCmds([]Cmd{
+		{
 			Name:      `Applications`,
 			Command:   `rofi -show drun`,
 			Prefix:    `a`,
 			Workspace: 0,
 		},
-		Cmd{
+		{
 			Name:      `Browser`,
 			Command:   `zen-browser $(echo "https://www.google.com/search?q=$(rofi -dmenu -p 'Enter Search Query:' | tr " " "+")")`,
 			Prefix:    `g`,
 			Workspace: 2,
 		},
-	}
-
+		{
+			Name:      `Calculator`,
+			Command:   `rofi -show calc`,
+			Prefix:    `=`,
+			Workspace: 0,
+		},
+		{
+			Name:      `Chatgpt.com`,
+			Command:   `zen-browser $(echo "https://chat.openai.com/?q=$(rofi -dmenu -p 'Enter Search Query:' | tr " " "+")")`,
+			Prefix:    `gpt`,
+			Workspace: 2,
+		},
+		{
+			Name:      `Claude ai`,
+			Command:   `zen-browser $(echo "https://claude.ai/new/?q=$(rofi -dmenu -p 'Enter Search Query:' | tr " " "+")")`,
+			Prefix:    `claude`,
+			Workspace: 2,
+		},
+		{
+			Name:      `Perplexity.ai`,
+			Command:   `zen-browser $(echo "https://www.perplexity.ai/search?q=$(rofi -dmenu -p 'Enter Search Query:' | tr " " "+")")`,
+			Prefix:    `ai`,
+			Workspace: 2,
+		},
+		{
+			Name:      `window`,
+			Command:   `rofi -show window`,
+			Prefix:    `w`,
+			Workspace: 0,
+		},
+		// Commented out as in the original
+		// {
+		// 	Name:      `Googel Gemini Ai`,
+		// 	Command:   `zen-browser $(echo "https://gemini.google.com/app?q=$(rofi -dmenu -p 'Enter Search Query:' | tr " " "+")")`,
+		// 	Prefix:    `gem`,
+		// 	Workspace: 2,
+		// },
+	})
 	cmd := exec.Command("rofi", "-dmenu", "-p", "Prefix:")
 	stdout, err := cmd.Output()
 	if err != nil {
