@@ -2,6 +2,7 @@
 main_package_path = ./main.go
 binary_name = rofi-prefixer
 A:=" "
+BIN_LOCATION := /home/shadow/.local/bin
 
 # ==================================================================================== #
 # HELPERS
@@ -67,14 +68,14 @@ tidy:
 build:
 	@echo "Building ${binary_name}"
 	@# Include additional build steps, like TypeScript, SCSS or Tailwind compilation here... | for some reason, it is printed on the terminal so made it a terminal command to remove it
-	@go build -o=./tmp/${binary_name} ${main_package_path}
+	@go build -o=${BIN_LOCATION}/${binary_name} ${main_package_path}
 	@echo "Built ${binary_name}"
 
 ## run: run the  application
 .PHONY: run
 run: build
 	@echo "Running ${binary_name} with args ${A}"
-	@./tmp/${binary_name} ${A}
+	@${BIN_LOCATION}/${binary_name} ${A}
 
 ## run/live: run the application with reloading on file changes
 .PHONY: run/live
