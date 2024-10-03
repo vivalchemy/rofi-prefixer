@@ -4,79 +4,25 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
 // Cmd represents a command to be executed, with options for workspace and prefix
 type Cmd struct {
-	Name      string // Friendly name of the command
+	Browser   bool   // Browser to use for opening links
 	Command   string // Actual command to execute
+	Name      string // Friendly name of the command
 	Prefix    string // Prefix to trigger the command
 	Workspace int    // Workspace to switch to after executing the command
 }
 
-// CommandGenerator generates the final command to be executed.
-// If `takeRofiInput` is true, the command uses rofi for user input; otherwise, it uses the provided `query`.
-func (c *Cmd) CommandGenerator(takeRofiInput bool, query string) string {
-	// Temporarily replace escaped \%s to handle literals
-	const placeholder = "__ESCAPED_PERCENT_S__"
-	command := strings.ReplaceAll(c.Command, `\%s`, placeholder)
-
-	// Replace %s depending on whether rofi input is needed
-	if takeRofiInput {
-		command = strings.ReplaceAll(command, "%s", `rofi -dmenu -p 'Enter Search Query:'`)
-	} else {
-		command = strings.ReplaceAll(command, "%s", fmt.Sprintf(`echo "%s"`, query))
-	}
-
-	// Restore escaped %s
-	command = strings.ReplaceAll(command, placeholder, `%s`)
-	return command
-}
-
-// GenerateTerminalCommand returns the full terminal command for execution.
-func (c *Cmd) GenerateTerminalCommand(takeRofiInput bool, query string) []string {
-	return []string{"bash", "-c", c.CommandGenerator(takeRofiInput, query)}
-}
-
-// ExecutableTerminalCommand prepares the exec.Cmd structure for execution.
-func (c *Cmd) ExecutableTerminalCommand(takeRofiInput bool, query string) *exec.Cmd {
-	cmdArgs := c.GenerateTerminalCommand(takeRofiInput, query)
-	return exec.Command(cmdArgs[0], cmdArgs[1:]...)
-}
-
-func (c *Cmd) SwitchWorkspace() error {
-	if c.Workspace == 0 {
-		return nil
-	}
-	cmd := exec.Command("hyprctl", "dispatch", "workspace", fmt.Sprintf("%d", c.Workspace))
-	return cmd.Run()
-}
-
-// ExecuteTerminalCommand executes the command and switches to the workspace if specified.
-func (c *Cmd) ExecuteTerminalCommand(takeRofiInput bool, query string) (string, error) {
-	// Execute the command
-	cmd := c.ExecutableTerminalCommand(takeRofiInput, query)
-	output, err := cmd.Output()
-	if err != nil {
-		return "", fmt.Errorf("command execution failed: %w", err)
-	}
-
-	// Switch workspace if specified
-	if err := c.SwitchWorkspace(); err != nil {
-		return "", fmt.Errorf("workspace switch failed: %w", err)
-	}
-
-	return string(output), nil
-}
-
-// Cmds manages a set of commands that can be executed by prefix.
 type Cmds struct {
 	commands map[string]*Cmd
 }
 
 // NewCmds initializes a new Cmds instance from a list of Cmd objects.
-func NewCmds(cmdList []Cmd) *Cmds {
+func newCmds(cmdList []Cmd) *Cmds {
 	cmds := &Cmds{
 		commands: make(map[string]*Cmd),
 	}
@@ -86,78 +32,147 @@ func NewCmds(cmdList []Cmd) *Cmds {
 	return cmds
 }
 
-// FindAndExecuteTerminalCommand finds a command by prefix and executes it.
-func (cmds *Cmds) FindAndExecuteTerminalCommand(input string) {
+// Main logic of the program
+func (cmds *Cmds) findCommand(input string) (cmd *Cmd, query string) {
 	// Split the prefix and query
-	prefix, query, found := strings.Cut(input, " ")
+	prefix, query, _ := strings.Cut(input, " ")
 
 	cmd, exists := cmds.commands[prefix]
 	if !exists {
-		fmt.Println("No matching command for prefix:", prefix)
-		return
+		// fmt.Println("No matching command for prefix:", prefix)
+		return nil, ""
+	}
+	// fmt.Println("fC cmd:", cmd, "query:", query)
+	return cmd, query
+}
+
+func (cmd *Cmd) needsQuery() bool {
+	// First, check if the string contains %s
+	if !strings.Contains(cmd.Command, "%s") {
+		return false
 	}
 
-	// Execute the command; if no query is found, rofi input will be used.
-	_, err := cmd.ExecuteTerminalCommand(!found, query)
-	if err != nil {
-		fmt.Printf("Error executing command '%s': %v\n", cmd.Name, err)
-		return
+	// Use a regular expression to check for non-escaped %s
+	re := regexp.MustCompile(`(^|[^\\])%s`)
+	return re.MatchString(cmd.Command)
+}
+
+func getQuery(input string) string {
+	if input != "" {
+		return input
 	}
-	// fmt.Println("Output:", output)
+	cmd := exec.Command("bash", "-c", "rofi -dmenu -p 'Enter Search Query:'")
+	query, err := cmd.Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to run rofi command: %v\n", err)
+		os.Exit(1)
+	}
+	// fmt.Println("gQ query:", string(query))
+	return strings.TrimSpace(string(query))
+}
+
+func (cmd *Cmd) convertToBrowserQuery(query string) string {
+	if cmd.Browser {
+		query = strings.ReplaceAll(query, " ", "+")
+	}
+	// fmt.Println("cTBQ query:", query)
+	return query
+}
+
+func (cmd *Cmd) makeBrowserCommand(query string) string {
+	if !cmd.Browser {
+		return query
+	}
+	// fmt.Println("mBC query: zen-browser", query)
+	return fmt.Sprintf("zen-browser %s", query)
+}
+
+func (cmd *Cmd) replacePlaceholderInCommand(query string) string {
+	// Temporarily replace escaped \%s to handle literals
+	const placeholder = "__ESCAPED_PERCENT_S__"
+	command := strings.ReplaceAll(cmd.Command, `\%s`, placeholder)
+
+	// Replace %s with the query
+	command = strings.ReplaceAll(command, "%s", query)
+
+	// Restore escaped %s
+	command = strings.ReplaceAll(command, placeholder, `%s`)
+
+	// fmt.Println("rPC command:", command)
+	return command
+}
+
+func (cmd *Cmd) executeCommand(command string) string {
+	executableCommand := exec.Command("bash", "-c", command)
+	output, err := executableCommand.Output()
+	if err != nil {
+		// fmt.Println("Error executing command:", err)
+		return ""
+	}
+	// fmt.Println("eC output:", string(output))
+	return string(output)
+}
+
+func (c *Cmd) switchWorkspace() error {
+	if c.Workspace == 0 {
+		return nil
+	}
+	cmd := exec.Command("hyprctl", "dispatch", "workspace", fmt.Sprintf("%d", c.Workspace))
+	return cmd.Run()
 }
 
 // Main logic to display the Rofi menu and execute selected command.
 func main() {
-	rofiCmds := NewCmds([]Cmd{
+	rofiCmds := newCmds([]Cmd{
 		{
-			Name:      `Applications`,
 			Command:   `rofi -show drun`,
+			Name:      `Applications`,
+			Browser:   false,
 			Prefix:    `a`,
 			Workspace: 0,
 		},
 		{
+			Browser:   true,
+			Command:   "https://www.google.com/search?q=%s",
 			Name:      `Google`,
-			Command:   `zen-browser "https://www.google.com/search?q=$(%s | tr " " "+")"`,
 			Prefix:    `g`,
 			Workspace: 2,
 		},
 		{
-			Name:      `Calculator`,
+			Browser:   false,
 			Command:   `rofi -show calc`,
+			Name:      `Calculator`,
 			Prefix:    `=`,
 			Workspace: 0,
 		},
 		{
+			Browser:   true,
+			Command:   "https://chat.openai.com/?q=%s",
 			Name:      `Chatgpt.com`,
-			Command:   `zen-browser "https://chat.openai.com/?q=$(%s | tr " " "+")"`,
 			Prefix:    `gpt`,
 			Workspace: 2,
 		},
 		{
+			Browser:   true,
+			Command:   "https://claude.ai/new/?q=%s",
 			Name:      `Claude ai`,
-			Command:   `zen-browser "https://claude.ai/new/?q=$(%s | tr " " "+")"`,
 			Prefix:    `claude`,
 			Workspace: 2,
 		},
 		{
 			Name:      `Perplexity.ai`,
-			Command:   `zen-browser "https://www.perplexity.ai/search?q=$(%s | tr " " "+")"`,
+			Command:   "https://www.perplexity.ai/search?q=%s",
+			Browser:   true,
 			Prefix:    `ai`,
 			Workspace: 2,
 		},
 		{
 			Name:      `window`,
 			Command:   `rofi -show window`,
+			Browser:   false,
 			Prefix:    `w`,
 			Workspace: 0,
 		},
-		// Commented out as in the original
-		// {
-		// 	Name:      `Googel Gemini Ai`,
-		// 	Command:   `zen-browser "https://gemini.google.com/app?q=$(%s | tr " " "+")"`,
-		// 	Prefix:    `gem`,
-		// 	Workspace: 2,
-		// },
 	})
 
 	var rofiMenu strings.Builder
@@ -176,10 +191,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Command flow
 	rawPrefix := strings.TrimSpace(string(stdout))
 	prefix, _, _ := strings.Cut(rawPrefix, "-->")
 	prefix = strings.TrimSpace(prefix)
-	// fmt.Printf("prefix: '%s'\n", prefix)
-	rofiCmds.FindAndExecuteTerminalCommand(prefix)
-	// fmt.Println(rofiPrompt)
+	fmt.Printf("prefix: '%s'\n", prefix)
+	command, query := rofiCmds.findCommand(prefix)
+	if command.needsQuery() {
+		query = getQuery(query)
+	}
+	query = command.convertToBrowserQuery(query)
+	query = command.replacePlaceholderInCommand(query)
+	query = command.makeBrowserCommand(query)
+	finalOutput := command.executeCommand(query)
+	if err := command.switchWorkspace(); err != nil {
+		fmt.Printf("Error switching workspace: %v\n", err)
+		return
+	}
+	fmt.Println(finalOutput)
 }
