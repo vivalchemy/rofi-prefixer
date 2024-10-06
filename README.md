@@ -1,5 +1,7 @@
 # Rofi Prefixer
 
+![Demo GIF](assets/demo.gif)
+
 Rofi Prefixer is a Go-based utility that enhances the functionality of Rofi by adding customizable prefixes for quick actions and searches.
 
 ## Table of Contents
