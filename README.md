@@ -44,13 +44,22 @@ Rofi Prefixer is a Go-based utility that enhances the functionality of Rofi by a
 
 ## Usage
 
-Run the `rofi-prefixer` binary:
+1. Run the `rofi-prefixer` binary:
+    ```bash
+    ./build/rofi-prefixer
+    ```
 
-```bash
-./build/rofi-prefixer
-```
+2. This will open a Rofi menu with all available prefixes. You can interact with it in several ways:
 
-This will open a Rofi menu with all available prefixes. Select a prefix to execute the associated command.
+    1. Select a prefix from the list to execute the associated command.
+    2. Type a prefix followed by a query:
+        Example: "g how to use rofi" (searches Google for "how to use rofi")
+    3. Type just the prefix:
+        Example: g (opens anothe rofi instance, prompting for input **only if the command uses %s**)
+    4. Use special prefixes:
+        1. "=" for calculator mode
+        1. "w" for window switcher
+        1. "a" for application launcher
 
 ## Configuration
 
