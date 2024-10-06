@@ -1,8 +1,7 @@
 # Change these variables as necessary.
 main_package_path = ./main.go
 binary_name = rofi-prefixer
-A:=" "
-BIN_LOCATION := /home/shadow/.local/bin
+BIN_LOCATION := ./build/
 
 # ==================================================================================== #
 # HELPERS
@@ -74,15 +73,15 @@ build:
 ## run: run the  application
 .PHONY: run
 run: build
-	@echo "Running ${binary_name} with args ${A}"
-	@${BIN_LOCATION}/${binary_name} ${A}
+	@echo "Running ${binary_name}"
+	@${BIN_LOCATION}/${binary_name} 
 
 ## run/live: run the application with reloading on file changes
 .PHONY: run/live
 run/live:
 	@echo "Running live reload using air..."
 	@air \
-		--build.cmd "make build" --build.bin "./tmp/${binary_name} ${A}" --build.delay "100" \
+		--build.cmd "make build" --build.bin "${BIN_LOCATION}/${binary_name}" \
 		--build.exclude_dir "" \
 		--build.include_ext "go, tpl, tmpl, html, css, scss, js, ts, sql, jpeg, jpg, gif, png, bmp, svg, webp, ico" \
 		--misc.clean_on_exit "true"

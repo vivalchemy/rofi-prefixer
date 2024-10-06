@@ -1,3 +1,3 @@
-module github.com/vivalchemy/rofi-prefix-switcher
+module github.com/vivalchemy/rofi-prefixer
 
 go 1.23.1

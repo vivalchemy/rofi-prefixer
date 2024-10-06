@@ -8,6 +8,76 @@ import (
 	"strings"
 )
 
+// Constants
+
+const (
+	BROWSER       = "zen-browser"                   // executable to use for opening links
+	WORKSPACE_CMD = "hyprctl dispatch workspace %s" // command to switch workspaces. %s is replaced with the workspace number
+)
+
+var ROFI_CMDS = []Cmd{
+	{
+		Command:   `rofi -show drun`,
+		Name:      `Applications`,
+		Browser:   false,
+		Prefix:    `a`,
+		Workspace: 0,
+	},
+	{
+		Browser:   true,
+		Command:   "https://www.google.com/search?q=%s",
+		Name:      `Google`,
+		Prefix:    `g`,
+		Workspace: 2,
+	},
+	{
+		Browser:   false,
+		Command:   `rofi -show calc`,
+		Name:      `Calculator`,
+		Prefix:    `=`,
+		Workspace: 0,
+	},
+	{
+		Browser:   true,
+		Command:   "https://chat.openai.com/?q=%s",
+		Name:      `Chatgpt.com`,
+		Prefix:    `gpt`,
+		Workspace: 2,
+	},
+	{
+		Browser:   true,
+		Command:   "https://claude.ai/new/?q=%s",
+		Name:      `Claude ai`,
+		Prefix:    `claude`,
+		Workspace: 2,
+	},
+	{
+		Name:      `Perplexity.ai`,
+		Command:   "https://www.perplexity.ai/search?q=%s",
+		Browser:   true,
+		Prefix:    `ai`,
+		Workspace: 2,
+	},
+	{
+		Name:      `window`,
+		Command:   `rofi -show window`,
+		Browser:   false,
+		Prefix:    `w`,
+		Workspace: 0,
+	},
+	{
+		Name:      `Youtube.com`,
+		Command:   `https://www.youtube.com/results?search_query=%s`,
+		Browser:   true,
+		Prefix:    `yt`,
+		Workspace: 2,
+	},
+}
+
+// End of constants
+
+// Start of the Logic
+
 // Cmd represents a command to be executed, with options for workspace and prefix
 type Cmd struct {
 	Browser   bool   // Browser to use for opening links
@@ -84,19 +154,23 @@ func (cmd *Cmd) makeBrowserCommand(query string) string {
 		return query
 	}
 	// fmt.Println("mBC query: zen-browser", query)
-	return fmt.Sprintf("zen-browser %s", query)
+	return strings.Join([]string{BROWSER, query}, " ")
 }
 
-func (cmd *Cmd) replacePlaceholderInCommand(query string) string {
+func replacePlaceholderInString(cmd string, query string) string {
 	// Temporarily replace escaped \%s to handle literals
 	const placeholder = "__ESCAPED_PERCENT_S__"
-	command := strings.ReplaceAll(cmd.Command, `\%s`, placeholder)
+	// fmt.Println("replacePlaceholderInString cmd:", cmd, "query:", query)
+	command := strings.ReplaceAll(cmd, `\%s`, placeholder)
+	// fmt.Println("replacePlaceholderInString command:", command)
 
 	// Replace %s with the query
 	command = strings.ReplaceAll(command, "%s", query)
+	// fmt.Println("replacePlaceholderInString command:", command)
 
 	// Restore escaped %s
 	command = strings.ReplaceAll(command, placeholder, `%s`)
+	// fmt.Println("replacePlaceholderInString command:", command)
 
 	// fmt.Println("rPC command:", command)
 	return command
@@ -117,63 +191,15 @@ func (c *Cmd) switchWorkspace() error {
 	if c.Workspace == 0 {
 		return nil
 	}
-	cmd := exec.Command("hyprctl", "dispatch", "workspace", fmt.Sprintf("%d", c.Workspace))
+	command := replacePlaceholderInString(WORKSPACE_CMD, fmt.Sprint(c.Workspace))
+	// fmt.Println(command)
+	cmd := exec.Command("bash", "-c", command)
 	return cmd.Run()
 }
 
 // Main logic to display the Rofi menu and execute selected command.
 func main() {
-	rofiCmds := newCmds([]Cmd{
-		{
-			Command:   `rofi -show drun`,
-			Name:      `Applications`,
-			Browser:   false,
-			Prefix:    `a`,
-			Workspace: 0,
-		},
-		{
-			Browser:   true,
-			Command:   "https://www.google.com/search?q=%s",
-			Name:      `Google`,
-			Prefix:    `g`,
-			Workspace: 2,
-		},
-		{
-			Browser:   false,
-			Command:   `rofi -show calc`,
-			Name:      `Calculator`,
-			Prefix:    `=`,
-			Workspace: 0,
-		},
-		{
-			Browser:   true,
-			Command:   "https://chat.openai.com/?q=%s",
-			Name:      `Chatgpt.com`,
-			Prefix:    `gpt`,
-			Workspace: 2,
-		},
-		{
-			Browser:   true,
-			Command:   "https://claude.ai/new/?q=%s",
-			Name:      `Claude ai`,
-			Prefix:    `claude`,
-			Workspace: 2,
-		},
-		{
-			Name:      `Perplexity.ai`,
-			Command:   "https://www.perplexity.ai/search?q=%s",
-			Browser:   true,
-			Prefix:    `ai`,
-			Workspace: 2,
-		},
-		{
-			Name:      `window`,
-			Command:   `rofi -show window`,
-			Browser:   false,
-			Prefix:    `w`,
-			Workspace: 0,
-		},
-	})
+	rofiCmds := newCmds(ROFI_CMDS)
 
 	var rofiMenu strings.Builder
 	for prefix, cmd := range rofiCmds.commands {
@@ -195,17 +221,17 @@ func main() {
 	rawPrefix := strings.TrimSpace(string(stdout))
 	prefix, _, _ := strings.Cut(rawPrefix, "-->")
 	prefix = strings.TrimSpace(prefix)
-	fmt.Printf("prefix: '%s'\n", prefix)
+	// fmt.Printf("prefix: '%s'\n", prefix)
 	command, query := rofiCmds.findCommand(prefix)
 	if command.needsQuery() {
 		query = getQuery(query)
 	}
 	query = command.convertToBrowserQuery(query)
-	query = command.replacePlaceholderInCommand(query)
+	query = replacePlaceholderInString(command.Command, query)
 	query = command.makeBrowserCommand(query)
 	finalOutput := command.executeCommand(query)
 	if err := command.switchWorkspace(); err != nil {
-		fmt.Printf("Error switching workspace: %v\n", err)
+		// fmt.Printf("Error switching workspace: %v\n", err)
 		return
 	}
 	fmt.Println(finalOutput)
